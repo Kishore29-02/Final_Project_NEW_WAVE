@@ -1,0 +1,99 @@
+with employee_with_designation as (
+	select 	
+		cp.course_id,
+		cp.course_status,
+		cp.employee_id,
+		e.designation_type
+	FROM public."Course_Performances" as cp join public."Employees" as e
+		on cp.employee_id = e.id
+),
+designation_count as (
+	SELECT 
+		course_id,
+		designation_type,
+		course_status,
+		count(employee_id) as employees_count
+	FROM employee_with_designation as cp
+	group by course_id, designation_type, course_status
+)
+
+select * from designation_count order by course_id, designation_type;
+
+------------------------------------------
+
+-- with course_count as (
+	SELECT 
+		course_id,
+		c.course_name,
+		c.course_description,
+		c.duration_hours,
+		sp.course_status,
+		count(course_status) as status_count
+	FROM 
+		public."Course_Performances" as sp join public."Courses" as c
+			on sp.course_id = c.id
+	group by 
+		course_id,
+		c.course_name,
+		c.course_description,
+		c.duration_hours,
+		sp.course_status
+	order by 
+		course_id,
+		status_count desc
+
+--------------------------------------------
+
+with average_score as (
+	SELECT 
+		cp.course_id,  
+		e.designation_type,
+		cp.course_status, 
+		avg(cp.score) as avg_score
+	FROM public."Course_Performances" as cp join public."Employees" as e
+		on cp.employee_id = e.id
+	where 
+		cp.course_status = 'completed'
+	group by
+		cp.course_id,  
+		e.designation_type,
+		cp.course_status
+), row_numbers as (
+	select
+		cp.course_id,
+		e.designation_type,
+		e.first_name || ' ' || e.last_name as name,
+		cp.course_status, 
+		cp.score,
+		row_number() over (
+			partition by course_id, designation_type
+			order by cp.score desc
+		) as index
+	FROM public."Course_Performances" as cp join public."Employees" as e
+		on cp.employee_id = e.id
+	where 
+		cp.course_status = 'completed'		
+), top_score as (
+	select
+		* 
+	from
+		row_numbers
+	where 
+		index = 1
+), final_table as (
+	select 
+		ts.course_id,
+		c.course_name,
+		ts.designation_type as Department,
+		name as Department_topper,
+		score as top_score,
+		avg_score
+	from 
+		top_score as ts 
+			left join average_score as avg  
+				on ts.course_id = avg.course_id and ts.designation_type = avg.designation_type
+			join public."Courses" as c
+				on c.id = ts.course_id
+)
+
+select * from final_table;
